@@ -20,7 +20,18 @@ struct Bullet {
     float life;
 };
 
+struct Fly {
+    Vector3 position;
+    float wingPhase;
+};
+
+struct Coin {
+    Vector3 position;
+    float age;
+};
+
 enum class Screen { Title, Introduction, Playing };
+enum class WavePhase { Survival, Grace };
 
 Sound makeTone(float startFrequency, float endFrequency, float duration,
                float volume = 0.35F) {
@@ -99,6 +110,42 @@ void drawCupcake(Cell cell, int boardSize) {
                  Color{34, 14, 27, 255});
     DrawSphereEx({p.x + 0.15F, p.y + 0.64F, p.z - 0.29F}, 0.065F, 6, 8,
                  Color{34, 14, 27, 255});
+}
+
+Fly spawnFly(int boardSize, std::mt19937& random) {
+    const float edge = static_cast<float>(boardSize) * 0.5F - 0.35F;
+    std::uniform_real_distribution<float> along(-edge, edge);
+    std::uniform_int_distribution<int> side(0, 3);
+    Vector3 position{along(random), 0.72F, along(random)};
+    switch (side(random)) {
+        case 0: position.x = -edge; break;
+        case 1: position.x = edge; break;
+        case 2: position.z = -edge; break;
+        default: position.z = edge; break;
+    }
+    return {position, along(random)};
+}
+
+void drawFly(const Fly& fly, float time) {
+    const float wing = std::sin(time * 18.0F + fly.wingPhase) * 0.12F;
+    DrawSphereEx(fly.position, 0.23F, 8, 12, Color{35, 30, 42, 255});
+    DrawSphereEx({fly.position.x, fly.position.y, fly.position.z + 0.24F},
+                 0.17F, 8, 10, Color{60, 52, 67, 255});
+    DrawSphereEx({fly.position.x - 0.23F, fly.position.y + 0.10F + wing,
+                  fly.position.z}, 0.18F, 6, 8, Fade(SKYBLUE, 0.72F));
+    DrawSphereEx({fly.position.x + 0.23F, fly.position.y + 0.10F - wing,
+                  fly.position.z}, 0.18F, 6, 8, Fade(SKYBLUE, 0.72F));
+    DrawSphereEx({fly.position.x - 0.09F, fly.position.y + 0.07F,
+                  fly.position.z - 0.19F}, 0.055F, 6, 8, RED);
+    DrawSphereEx({fly.position.x + 0.09F, fly.position.y + 0.07F,
+                  fly.position.z - 0.19F}, 0.055F, 6, 8, RED);
+}
+
+void drawCoin(const Coin& coin, float time) {
+    const float bob = std::sin(time * 4.0F + coin.age) * 0.08F;
+    const Vector3 p = {coin.position.x, coin.position.y + bob, coin.position.z};
+    DrawCylinder(p, 0.23F, 0.23F, 0.09F, 16, Color{244, 187, 53, 255});
+    DrawCylinderWires(p, 0.23F, 0.23F, 0.09F, 16, Color{255, 235, 133, 255});
 }
 
 bool occupiedBySnake(const SnakeGame& game, Cell cell) {
@@ -248,17 +295,28 @@ int main(int argc, char** argv) {
     SnakeGame game(18);
     std::vector<Bullet> bullets;
     std::vector<Cell> cupcakes;
+    std::vector<Fly> flies;
+    std::vector<Coin> droppedCoins;
     std::mt19937 random(std::random_device{}());
     refillCupcakes(game, cupcakes, random);
     Screen screen = captureFrame ? Screen::Playing : Screen::Title;
     float fireCooldown = 0.0F;
     float muzzleFlash = 0.0F;
+    float damageCooldown = 0.0F;
+    float flySpawnTimer = 0.4F;
+    int stage = 1;
+    WavePhase wavePhase = WavePhase::Survival;
+    float phaseTime = 30.0F;
     const Sound fireSound = makeTone(760.0F, 260.0F, 0.09F, 0.24F);
     const Sound hitSound = makeTone(180.0F, 520.0F, 0.14F, 0.32F);
     const Sound eatSound = makeTone(420.0F, 880.0F, 0.18F, 0.28F);
     const Sound crashSound = makeTone(160.0F, 55.0F, 0.38F, 0.38F);
     const Sound cupcakeSound = makeTone(240.0F, 95.0F, 0.22F, 0.34F);
     const Sound introSound = makeTone(120.0F, 420.0F, 1.15F, 0.18F);
+    const Sound flySound = makeTone(520.0F, 110.0F, 0.12F, 0.28F);
+    const Sound damageSound = makeTone(95.0F, 45.0F, 0.24F, 0.38F);
+    const Sound coinSound = makeTone(720.0F, 1080.0F, 0.12F, 0.22F);
+    const Sound phaseSound = makeTone(300.0F, 680.0F, 0.32F, 0.22F);
     Camera3D camera{};
     camera.position = {13.5F, 16.0F, 13.5F};
     camera.target = {0.0F, 0.0F, 0.0F};
@@ -268,6 +326,7 @@ int main(int argc, char** argv) {
 
     double lastStep = GetTime();
     bool done = false;
+    int captureDelay = captureFrame ? 90 : 0;
     while (!WindowShouldClose() && !done) {
         const float delta = GetFrameTime();
         if (screen == Screen::Title && IsKeyPressed(KEY_ENTER)) {
@@ -286,13 +345,20 @@ int main(int argc, char** argv) {
                 game.reset();
                 bullets.clear();
                 cupcakes.clear();
+                flies.clear();
+                droppedCoins.clear();
                 refillCupcakes(game, cupcakes, random);
+                stage = 1;
+                wavePhase = WavePhase::Survival;
+                phaseTime = 30.0F;
+                flySpawnTimer = 0.4F;
                 lastStep = GetTime();
             }
         }
 
         fireCooldown = std::max(0.0F, fireCooldown - delta);
         muzzleFlash = std::max(0.0F, muzzleFlash - delta);
+        damageCooldown = std::max(0.0F, damageCooldown - delta);
         if (screen == Screen::Playing && IsKeyDown(KEY_SPACE) &&
             fireCooldown <= 0.0F && game.state() == GameState::Playing) {
             const Vector3 direction = directionVector(game.direction());
@@ -305,6 +371,68 @@ int main(int argc, char** argv) {
             PlaySound(fireSound);
         }
         if (screen == Screen::Playing && game.state() == GameState::Playing) {
+            phaseTime -= delta;
+            if (wavePhase == WavePhase::Survival) {
+                flySpawnTimer -= delta;
+                const float spawnInterval = std::max(0.42F, 1.30F - stage * 0.07F);
+                if (flySpawnTimer <= 0.0F && flies.size() < 24) {
+                    flies.push_back(spawnFly(game.boardSize(), random));
+                    flySpawnTimer = spawnInterval;
+                }
+                if (phaseTime <= 0.0F) {
+                    wavePhase = WavePhase::Grace;
+                    phaseTime = 10.0F;
+                    flies.clear();
+                    PlaySound(phaseSound);
+                }
+            } else if (phaseTime <= 0.0F) {
+                ++stage;
+                wavePhase = WavePhase::Survival;
+                phaseTime = 30.0F + static_cast<float>(stage - 1) * 5.0F;
+                flySpawnTimer = 0.25F;
+                PlaySound(phaseSound);
+            }
+
+            const Vector3 head = worldPosition(game.snake().front(), game.boardSize(), 0.58F);
+            if (wavePhase == WavePhase::Survival) {
+                const float flySpeed = 1.75F + static_cast<float>(stage - 1) * 0.12F;
+                for (Fly& fly : flies) {
+                    const float dx = head.x - fly.position.x;
+                    const float dz = head.z - fly.position.z;
+                    const float length = std::sqrt(dx * dx + dz * dz);
+                    if (length > 0.001F) {
+                        fly.position.x += dx / length * flySpeed * delta;
+                        fly.position.z += dz / length * flySpeed * delta;
+                    }
+                }
+                for (Fly& fly : flies) {
+                    const float dx = head.x - fly.position.x;
+                    const float dz = head.z - fly.position.z;
+                    if (dx * dx + dz * dz < 0.30F) {
+                        fly.position.y = -100.0F;
+                        if (damageCooldown <= 0.0F) {
+                            game.takeDamage();
+                            damageCooldown = 0.75F;
+                            PlaySound(damageSound);
+                        }
+                    }
+                }
+                std::erase_if(flies, [](const Fly& fly) { return fly.position.y < 0.0F; });
+            }
+
+            for (Coin& coin : droppedCoins) {
+                coin.age += delta;
+                const float dx = head.x - coin.position.x;
+                const float dz = head.z - coin.position.z;
+                if (dx * dx + dz * dz < 0.32F) {
+                    coin.position.y = -100.0F;
+                    game.collectCoin();
+                    PlaySound(coinSound);
+                }
+            }
+            std::erase_if(droppedCoins,
+                          [](const Coin& coin) { return coin.position.y < 0.0F; });
+
             for (Bullet& bullet : bullets) {
                 bullet.position.x += bullet.direction.x * 18.0F * delta;
                 bullet.position.z += bullet.direction.z * 18.0F * delta;
@@ -316,6 +444,20 @@ int main(int argc, char** argv) {
                     bullet.life = 0.0F;
                     continue;
                 }
+
+                for (Fly& fly : flies) {
+                    const float fx = bullet.position.x - fly.position.x;
+                    const float fy = bullet.position.y - fly.position.y;
+                    const float fz = bullet.position.z - fly.position.z;
+                    if (fx * fx + fy * fy + fz * fz < 0.20F) {
+                        droppedCoins.push_back({{fly.position.x, 0.28F, fly.position.z}, 0.0F});
+                        fly.position.y = -100.0F;
+                        bullet.life = 0.0F;
+                        PlaySound(flySound);
+                        break;
+                    }
+                }
+                if (bullet.life <= 0.0F) continue;
 
                 const Vector3 apple = worldPosition(game.food(), game.boardSize(), 0.46F);
                 const float dx = bullet.position.x - apple.x;
@@ -342,6 +484,7 @@ int main(int argc, char** argv) {
                     }
                 }
             }
+            std::erase_if(flies, [](const Fly& fly) { return fly.position.y < 0.0F; });
             std::erase_if(bullets, [](const Bullet& bullet) { return bullet.life <= 0.0F; });
         }
 
@@ -362,6 +505,8 @@ int main(int argc, char** argv) {
         drawBoard(game);
         drawBlessing(game.food(), game.boardSize(), static_cast<float>(GetTime()));
         for (Cell cupcake : cupcakes) drawCupcake(cupcake, game.boardSize());
+        for (const Coin& coin : droppedCoins) drawCoin(coin, static_cast<float>(GetTime()));
+        for (const Fly& fly : flies) drawFly(fly, static_cast<float>(GetTime()));
         drawBullets(bullets);
         drawSnake(game, muzzleFlash);
         EndMode3D();
@@ -382,7 +527,9 @@ int main(int argc, char** argv) {
             centeredText("AND EXTREMELY HUNGRY.", 385, 30, Color{229, 75, 92, 255});
             centeredText("Devour Blessings. Destroy Cupcakes. Ascend.", 460, 24,
                          Color{123, 231, 196, 255});
-            centeredText("Press ENTER to begin", 535, 20, Color{160, 174, 194, 255});
+            centeredText("Survive the swarm and collect what the flies leave behind.", 495, 20,
+                         Color{196, 204, 216, 255});
+            centeredText("Press ENTER to begin", 555, 20, Color{160, 174, 194, 255});
         } else {
             centeredText("BALTHAZAR: THE BECOMING OF A GOD", 24, 32,
                          Color{255, 210, 72, 255});
@@ -390,6 +537,14 @@ int main(int argc, char** argv) {
                          64, 18, {160, 174, 194, 255});
             DrawText(TextFormat("DIVINE POWER  %04i", game.score()), 42,
                      screenHeight - 66, 24, RAYWHITE);
+            DrawText(TextFormat("COINS  %03i", game.coins()), 315,
+                     screenHeight - 64, 22, Color{255, 210, 72, 255});
+            const char* phaseLabel = wavePhase == WavePhase::Survival ? "SURVIVE" : "GRACE";
+            const Color phaseColor = wavePhase == WavePhase::Survival
+                ? Color{229, 75, 92, 255} : Color{123, 231, 196, 255};
+            DrawText(TextFormat("STAGE %02i   %s  %02i", stage, phaseLabel,
+                                static_cast<int>(std::ceil(std::max(0.0F, phaseTime)))),
+                     470, screenHeight - 64, 21, phaseColor);
             const float ascension = std::min(1.0F, static_cast<float>(game.score()) / 200.0F);
             DrawText("ASCENSION", 745, screenHeight - 67, 18, Color{255, 210, 72, 255});
             DrawRectangle(865, screenHeight - 65, 190, 18, Color{32, 42, 53, 255});
@@ -405,7 +560,7 @@ int main(int argc, char** argv) {
         }
         if (screen == Screen::Playing && game.state() == GameState::Won)
             centeredText("YOU FILLED THE BOARD!", 345, 40, {255, 221, 87, 255});
-        if (captureFrame) {
+        if (captureFrame && --captureDelay <= 0) {
             TakeScreenshot(argv[2]);
             done = true;
         }
@@ -418,6 +573,10 @@ int main(int argc, char** argv) {
     UnloadSound(crashSound);
     UnloadSound(cupcakeSound);
     UnloadSound(introSound);
+    UnloadSound(flySound);
+    UnloadSound(damageSound);
+    UnloadSound(coinSound);
+    UnloadSound(phaseSound);
     CloseAudioDevice();
     CloseWindow();
     return 0;

@@ -23,9 +23,12 @@ public:
     void togglePause();
     bool shootFood(Cell cell);
     void defeatCupcake();
+    void takeDamage();
+    void collectCoin();
 
     [[nodiscard]] int boardSize() const { return boardSize_; }
     [[nodiscard]] int score() const { return score_; }
+    [[nodiscard]] int coins() const { return coins_; }
     [[nodiscard]] GameState state() const { return state_; }
     [[nodiscard]] Direction direction() const { return direction_; }
     [[nodiscard]] const std::vector<Cell>& snake() const { return snake_; }
@@ -38,6 +41,7 @@ private:
 
     int boardSize_;
     int score_{};
+    int coins_{};
     Direction direction_{Direction::East};
     Direction requestedDirection_{Direction::East};
     GameState state_{GameState::Playing};

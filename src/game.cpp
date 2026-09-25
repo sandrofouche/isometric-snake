@@ -13,6 +13,7 @@ void SnakeGame::reset() {
     const int middle = boardSize_ / 2;
     snake_ = {{middle, middle}, {middle - 1, middle}, {middle - 2, middle}};
     score_ = 0;
+    coins_ = 0;
     direction_ = Direction::East;
     requestedDirection_ = Direction::East;
     state_ = GameState::Playing;
@@ -44,6 +45,16 @@ bool SnakeGame::shootFood(Cell cell) {
 
 void SnakeGame::defeatCupcake() {
     if (state_ == GameState::Playing) score_ += 15;
+}
+
+void SnakeGame::takeDamage() {
+    if (state_ != GameState::Playing) return;
+    if (snake_.size() > 1) snake_.pop_back();
+    else state_ = GameState::GameOver;
+}
+
+void SnakeGame::collectCoin() {
+    if (state_ == GameState::Playing) ++coins_;
 }
 
 bool SnakeGame::isOccupied(Cell cell) const {

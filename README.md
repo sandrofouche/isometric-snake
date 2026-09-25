@@ -19,6 +19,12 @@ New to Git or GitHub? Start with the [Student Setup Guide](STUDENT_SETUP.md).
 
 Devour a golden Blessing for 10 Divine Power and growth, or shoot it for 5 without growing. Ravenous Cupcakes are worth 15 Divine Power when destroyed. Avoid the walls and your own body. The game speeds up as Divine Power increases, and the Ascension meter tracks progress toward Balthazar's divine form.
 
+## Survival waves
+
+Each stage begins with a timed survival wave. Flies enter from the board edges and pursue Balthazar. One shot destroys a fly and drops a coin. Move over the coin to collect it for the future shop system.
+
+When a fly reaches Balthazar, he loses one tail segment instead of immediately losing. A hit with no remaining tail ends the run. After the timer expires, the surviving flies retreat and a 10-second grace period gives Balthazar time to collect dropped coins before the next, longer wave begins.
+
 The head-mounted blaster fires fast projectiles that stop at the board edge. Firing, hits, eating, and crashes have procedurally generated sound effects, so no external audio assets are required.
 
 ## Build

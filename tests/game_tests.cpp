@@ -18,6 +18,18 @@ int main() {
 
     game.reset();
     assert(game.score() == 0);
+    assert(game.coins() == 0);
+
+    game.collectCoin();
+    game.collectCoin();
+    assert(game.coins() == 2);
+    game.takeDamage();
+    assert(game.snake().size() == 2);
+    game.takeDamage();
+    assert(game.snake().size() == 1);
+    game.takeDamage();
+    assert(game.state() == GameState::GameOver);
+    game.reset();
 
     const Cell start = game.snake().front();
     game.step();
