@@ -23,7 +23,11 @@ Devour a golden Blessing for 10 Divine Power and growth, or shoot it for 5 witho
 
 Each stage begins with a timed survival wave. Flies enter from the board edges and pursue Balthazar. One shot destroys a fly and drops a coin. Move over the coin to collect it for the future shop system.
 
-When a fly reaches Balthazar, he loses one tail segment instead of immediately losing. A hit with no remaining tail ends the run. After the timer expires, the surviving flies retreat and a 10-second grace period gives Balthazar time to collect dropped coins before the next, longer wave begins.
+When a fly reaches Balthazar, he loses one tail segment instead of immediately losing. A hit with no remaining tail ends the run. After the timer expires, the surviving flies retreat and a 10-second grace period gives Balthazar time to collect dropped coins.
+
+The Grace Market opens after that period. Spend coins to add a tail segment, increase firing speed up to three times, or purchase eight seconds of invincibility for the next wave. Press **1**, **2**, or **3** to purchase an upgrade and **Enter** to begin the next wave. Combat upgrades reset when the run ends.
+
+Fly spawning is deliberately gradual: the first wave produces roughly one fly every 2.2 seconds, with a restrained increase in later stages and a maximum of 16 active flies.
 
 The head-mounted blaster fires fast projectiles that stop at the board edge. Firing, hits, eating, and crashes have procedurally generated sound effects, so no external audio assets are required.
 

@@ -1,5 +1,6 @@
 #include "game.hpp"
 #include "raylib.h"
+#include "rlgl.h"
 
 #include <algorithm>
 #include <cmath>
@@ -31,7 +32,7 @@ struct Coin {
 };
 
 enum class Screen { Title, Introduction, Playing };
-enum class WavePhase { Survival, Grace };
+enum class WavePhase { Survival, Grace, Shop };
 
 Sound makeTone(float startFrequency, float endFrequency, float duration,
                float volume = 0.35F) {
@@ -286,7 +287,9 @@ void readMovementInput(SnakeGame& game) {
 } // namespace
 
 int main(int argc, char** argv) {
-    const bool captureFrame = argc == 3 && std::string_view(argv[1]) == "--screenshot";
+    const bool captureShop = argc == 3 && std::string_view(argv[1]) == "--screenshot-shop";
+    const bool captureFrame = argc == 3 &&
+        (std::string_view(argv[1]) == "--screenshot" || captureShop);
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
     InitWindow(screenWidth, screenHeight, "Isometric Snake");
     InitAudioDevice();
@@ -303,10 +306,17 @@ int main(int argc, char** argv) {
     float fireCooldown = 0.0F;
     float muzzleFlash = 0.0F;
     float damageCooldown = 0.0F;
-    float flySpawnTimer = 0.4F;
+    float flySpawnTimer = 1.2F;
     int stage = 1;
     WavePhase wavePhase = WavePhase::Survival;
     float phaseTime = 30.0F;
+    int fireRateLevel = 0;
+    bool nextWaveInvincibility = false;
+    float invincibilityTime = 0.0F;
+    if (captureShop) {
+        wavePhase = WavePhase::Shop;
+        for (int i = 0; i < 14; ++i) game.collectCoin();
+    }
     const Sound fireSound = makeTone(760.0F, 260.0F, 0.09F, 0.24F);
     const Sound hitSound = makeTone(180.0F, 520.0F, 0.14F, 0.32F);
     const Sound eatSound = makeTone(420.0F, 880.0F, 0.18F, 0.28F);
@@ -340,7 +350,7 @@ int main(int argc, char** argv) {
 
         if (screen == Screen::Playing) {
             readMovementInput(game);
-            if (IsKeyPressed(KEY_P)) game.togglePause();
+            if (IsKeyPressed(KEY_P) && wavePhase != WavePhase::Shop) game.togglePause();
             if (IsKeyPressed(KEY_R)) {
                 game.reset();
                 bullets.clear();
@@ -351,31 +361,63 @@ int main(int argc, char** argv) {
                 stage = 1;
                 wavePhase = WavePhase::Survival;
                 phaseTime = 30.0F;
-                flySpawnTimer = 0.4F;
+                flySpawnTimer = 1.2F;
+                fireRateLevel = 0;
+                nextWaveInvincibility = false;
+                invincibilityTime = 0.0F;
                 lastStep = GetTime();
+            }
+
+            if (wavePhase == WavePhase::Shop) {
+                if (IsKeyPressed(KEY_ONE) && game.spendCoins(5)) {
+                    game.addTailSegment();
+                    PlaySound(coinSound);
+                }
+                if (IsKeyPressed(KEY_TWO) && fireRateLevel < 3 && game.spendCoins(6)) {
+                    ++fireRateLevel;
+                    PlaySound(coinSound);
+                }
+                if (IsKeyPressed(KEY_THREE) && !nextWaveInvincibility &&
+                    game.spendCoins(8)) {
+                    nextWaveInvincibility = true;
+                    PlaySound(coinSound);
+                }
+                if (IsKeyPressed(KEY_ENTER)) {
+                    ++stage;
+                    wavePhase = WavePhase::Survival;
+                    phaseTime = 30.0F + static_cast<float>(stage - 1) * 5.0F;
+                    flySpawnTimer = 0.8F;
+                    if (nextWaveInvincibility) {
+                        invincibilityTime = 8.0F;
+                        nextWaveInvincibility = false;
+                    }
+                    PlaySound(phaseSound);
+                }
             }
         }
 
         fireCooldown = std::max(0.0F, fireCooldown - delta);
         muzzleFlash = std::max(0.0F, muzzleFlash - delta);
         damageCooldown = std::max(0.0F, damageCooldown - delta);
-        if (screen == Screen::Playing && IsKeyDown(KEY_SPACE) &&
+        invincibilityTime = std::max(0.0F, invincibilityTime - delta);
+        const float fireInterval = std::max(0.08F, 0.18F - fireRateLevel * 0.025F);
+        if (screen == Screen::Playing && wavePhase != WavePhase::Shop && IsKeyDown(KEY_SPACE) &&
             fireCooldown <= 0.0F && game.state() == GameState::Playing) {
             const Vector3 direction = directionVector(game.direction());
             Vector3 origin = worldPosition(game.snake().front(), game.boardSize(), 0.72F);
             origin.x += direction.x * 0.58F;
             origin.z += direction.z * 0.58F;
             bullets.push_back({origin, direction, 2.0F});
-            fireCooldown = 0.18F;
+            fireCooldown = fireInterval;
             muzzleFlash = 0.075F;
             PlaySound(fireSound);
         }
         if (screen == Screen::Playing && game.state() == GameState::Playing) {
-            phaseTime -= delta;
+            if (wavePhase != WavePhase::Shop) phaseTime -= delta;
             if (wavePhase == WavePhase::Survival) {
                 flySpawnTimer -= delta;
-                const float spawnInterval = std::max(0.42F, 1.30F - stage * 0.07F);
-                if (flySpawnTimer <= 0.0F && flies.size() < 24) {
+                const float spawnInterval = std::max(1.05F, 2.30F - stage * 0.08F);
+                if (flySpawnTimer <= 0.0F && flies.size() < 16) {
                     flies.push_back(spawnFly(game.boardSize(), random));
                     flySpawnTimer = spawnInterval;
                 }
@@ -385,11 +427,9 @@ int main(int argc, char** argv) {
                     flies.clear();
                     PlaySound(phaseSound);
                 }
-            } else if (phaseTime <= 0.0F) {
-                ++stage;
-                wavePhase = WavePhase::Survival;
-                phaseTime = 30.0F + static_cast<float>(stage - 1) * 5.0F;
-                flySpawnTimer = 0.25F;
+            } else if (wavePhase == WavePhase::Grace && phaseTime <= 0.0F) {
+                wavePhase = WavePhase::Shop;
+                bullets.clear();
                 PlaySound(phaseSound);
             }
 
@@ -410,7 +450,7 @@ int main(int argc, char** argv) {
                     const float dz = head.z - fly.position.z;
                     if (dx * dx + dz * dz < 0.30F) {
                         fly.position.y = -100.0F;
-                        if (damageCooldown <= 0.0F) {
+                        if (damageCooldown <= 0.0F && invincibilityTime <= 0.0F) {
                             game.takeDamage();
                             damageCooldown = 0.75F;
                             PlaySound(damageSound);
@@ -489,7 +529,8 @@ int main(int argc, char** argv) {
         }
 
         const double interval = std::max(0.075, 0.19 - game.score() * 0.0015);
-        if (screen == Screen::Playing && GetTime() - lastStep >= interval) {
+        if (screen == Screen::Playing && wavePhase != WavePhase::Shop &&
+            GetTime() - lastStep >= interval) {
             const int previousScore = game.score();
             const GameState previousState = game.state();
             game.step();
@@ -533,23 +574,44 @@ int main(int argc, char** argv) {
         } else {
             centeredText("BALTHAZAR: THE BECOMING OF A GOD", 24, 32,
                          Color{255, 210, 72, 255});
-            centeredText("Left/A + Right/D steer   •   Space fires   •   P pauses   •   R restarts",
+            centeredText("Left/A + Right/D steer   |   Space fires   |   P pauses   |   R restarts",
                          64, 18, {160, 174, 194, 255});
             DrawText(TextFormat("DIVINE POWER  %04i", game.score()), 42,
                      screenHeight - 66, 24, RAYWHITE);
             DrawText(TextFormat("COINS  %03i", game.coins()), 315,
                      screenHeight - 64, 22, Color{255, 210, 72, 255});
-            const char* phaseLabel = wavePhase == WavePhase::Survival ? "SURVIVE" : "GRACE";
+            const char* phaseLabel = wavePhase == WavePhase::Survival ? "SURVIVE" :
+                                     wavePhase == WavePhase::Grace ? "GRACE" : "SHOP";
             const Color phaseColor = wavePhase == WavePhase::Survival
                 ? Color{229, 75, 92, 255} : Color{123, 231, 196, 255};
-            DrawText(TextFormat("STAGE %02i   %s  %02i", stage, phaseLabel,
-                                static_cast<int>(std::ceil(std::max(0.0F, phaseTime)))),
+            const int shownTime = wavePhase == WavePhase::Shop ? 0 :
+                static_cast<int>(std::ceil(std::max(0.0F, phaseTime)));
+            DrawText(TextFormat("STAGE %02i   %s  %02i", stage, phaseLabel, shownTime),
                      470, screenHeight - 64, 21, phaseColor);
             const float ascension = std::min(1.0F, static_cast<float>(game.score()) / 200.0F);
             DrawText("ASCENSION", 745, screenHeight - 67, 18, Color{255, 210, 72, 255});
             DrawRectangle(865, screenHeight - 65, 190, 18, Color{32, 42, 53, 255});
             DrawRectangle(865, screenHeight - 65, static_cast<int>(190.0F * ascension), 18,
                           Color{196, 77, 133, 255});
+            if (invincibilityTime > 0.0F)
+                centeredText(TextFormat("DIVINE SHIELD  %.1f", invincibilityTime), 96, 20,
+                             Color{123, 231, 196, 255});
+        }
+        if (screen == Screen::Playing && wavePhase == WavePhase::Shop) {
+            DrawRectangle(165, 150, 770, 450, Fade(Color{8, 10, 18, 255}, 0.95F));
+            centeredText("GRACE MARKET", 180, 42, Color{255, 210, 72, 255});
+            centeredText(TextFormat("COINS AVAILABLE: %i", game.coins()), 238, 22, RAYWHITE);
+            DrawText("1   Add one tail segment", 260, 305, 25, RAYWHITE);
+            DrawText("5 coins", 745, 305, 25, Color{255, 210, 72, 255});
+            DrawText("2   Faster firing", 260, 365, 25, RAYWHITE);
+            DrawText(TextFormat("6 coins   Level %i/3", fireRateLevel), 670, 365, 23,
+                     fireRateLevel >= 3 ? GRAY : Color{255, 210, 72, 255});
+            DrawText("3   Divine shield for next wave", 260, 425, 25, RAYWHITE);
+            DrawText(nextWaveInvincibility ? "PURCHASED" : "8 coins", 745, 425, 23,
+                     nextWaveInvincibility ? Color{123, 231, 196, 255}
+                                              : Color{255, 210, 72, 255});
+            centeredText("Press ENTER to begin the next wave", 520, 21,
+                         Color{123, 231, 196, 255});
         }
         if (screen == Screen::Playing && game.state() == GameState::Paused)
             centeredText("PAUSED", 345, 48, RAYWHITE);
@@ -561,6 +623,7 @@ int main(int argc, char** argv) {
         if (screen == Screen::Playing && game.state() == GameState::Won)
             centeredText("YOU FILLED THE BOARD!", 345, 40, {255, 221, 87, 255});
         if (captureFrame && --captureDelay <= 0) {
+            rlDrawRenderBatchActive();
             TakeScreenshot(argv[2]);
             done = true;
         }

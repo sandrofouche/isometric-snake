@@ -57,6 +57,16 @@ void SnakeGame::collectCoin() {
     if (state_ == GameState::Playing) ++coins_;
 }
 
+void SnakeGame::addTailSegment() {
+    if (state_ == GameState::Playing && !snake_.empty()) snake_.push_back(snake_.back());
+}
+
+bool SnakeGame::spendCoins(int amount) {
+    if (amount < 0 || coins_ < amount) return false;
+    coins_ -= amount;
+    return true;
+}
+
 bool SnakeGame::isOccupied(Cell cell) const {
     return std::find(snake_.begin(), snake_.end(), cell) != snake_.end();
 }

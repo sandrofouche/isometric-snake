@@ -23,6 +23,14 @@ int main() {
     game.collectCoin();
     game.collectCoin();
     assert(game.coins() == 2);
+    assert(!game.spendCoins(3));
+    assert(game.spendCoins(1));
+    assert(game.coins() == 1);
+    const std::size_t lengthBeforeUpgrade = game.snake().size();
+    game.addTailSegment();
+    assert(game.snake().size() == lengthBeforeUpgrade + 1);
+    game.takeDamage();
+    assert(game.snake().size() == 3);
     game.takeDamage();
     assert(game.snake().size() == 2);
     game.takeDamage();

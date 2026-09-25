@@ -25,6 +25,8 @@ public:
     void defeatCupcake();
     void takeDamage();
     void collectCoin();
+    void addTailSegment();
+    bool spendCoins(int amount);
 
     [[nodiscard]] int boardSize() const { return boardSize_; }
     [[nodiscard]] int score() const { return score_; }
