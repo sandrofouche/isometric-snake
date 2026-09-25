@@ -22,6 +22,7 @@ public:
     void step();
     void togglePause();
     bool shootFood(Cell cell);
+    void defeatCupcake();
 
     [[nodiscard]] int boardSize() const { return boardSize_; }
     [[nodiscard]] int score() const { return score_; }

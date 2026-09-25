@@ -42,6 +42,10 @@ bool SnakeGame::shootFood(Cell cell) {
     return true;
 }
 
+void SnakeGame::defeatCupcake() {
+    if (state_ == GameState::Playing) score_ += 15;
+}
+
 bool SnakeGame::isOccupied(Cell cell) const {
     return std::find(snake_.begin(), snake_.end(), cell) != snake_.end();
 }

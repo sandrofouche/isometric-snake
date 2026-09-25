@@ -13,6 +13,8 @@ int main() {
     assert(game.score() == 0);
     assert(game.shootFood(firstFood));
     assert(game.score() == 5);
+    game.defeatCupcake();
+    assert(game.score() == 20);
 
     game.reset();
     assert(game.score() == 0);

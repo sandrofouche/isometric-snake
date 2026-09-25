@@ -1,6 +1,8 @@
-# Isometric Snake
+# Balthazar: The Becoming of a God
 
-A playable C++20 prototype of Snake rendered as a colorful 18×18 isometric board. The game rules are independent from the renderer, making later additions—levels, hazards, power-ups, enemies, or alternate cameras—straightforward.
+A playable C++20 reimagining of Snake rendered on a colorful 18×18 isometric board. The game rules are independent from the renderer, making later additions—levels, hazards, power-ups, enemies, or alternate cameras—straightforward.
+
+Balthazar, divine child of Wadjet, once consumed every Blessing he possessed to defeat the Ravenous Cupcake. After millennia of slumber, he has awakened powerless and extremely hungry. Devour Blessings, destroy Cupcakes, and rebuild his divine power.
 
 New to Git or GitHub? Start with the [Student Setup Guide](STUDENT_SETUP.md).
 
@@ -15,7 +17,7 @@ New to Git or GitHub? Start with the [Student Setup Guide](STUDENT_SETUP.md).
 - **R**: restart
 - **Esc**: quit
 
-Eat an apple for 10 points and growth, or shoot it for 5 points without growing. Avoid the walls and your own body. The game speeds up as the score increases.
+Devour a golden Blessing for 10 Divine Power and growth, or shoot it for 5 without growing. Ravenous Cupcakes are worth 15 Divine Power when destroyed. Avoid the walls and your own body. The game speeds up as Divine Power increases, and the Ascension meter tracks progress toward Balthazar's divine form.
 
 The head-mounted blaster fires fast projectiles that stop at the board edge. Firing, hits, eating, and crashes have procedurally generated sound effects, so no external audio assets are required.
 

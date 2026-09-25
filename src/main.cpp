@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <numbers>
+#include <random>
 #include <string_view>
 #include <vector>
 
@@ -18,6 +19,8 @@ struct Bullet {
     Vector3 direction;
     float life;
 };
+
+enum class Screen { Title, Introduction, Playing };
 
 Sound makeTone(float startFrequency, float endFrequency, float duration,
                float volume = 0.35F) {
@@ -69,16 +72,53 @@ void drawBoard(const SnakeGame& game) {
     }
 }
 
-void drawApple(Cell cell, int boardSize) {
-    const Vector3 base = worldPosition(cell, boardSize, 0.46F);
-    DrawSphereEx(base, 0.36F, 16, 24, Color{229, 55, 69, 255});
-    DrawSphereEx({base.x - 0.12F, base.y + 0.08F, base.z}, 0.27F, 12, 20,
-                 Color{247, 75, 82, 255});
-    DrawCylinderEx({base.x, base.y + 0.27F, base.z},
-                   {base.x + 0.03F, base.y + 0.62F, base.z},
-                   0.045F, 0.025F, 8, Color{91, 56, 35, 255});
-    DrawSphereEx({base.x + 0.16F, base.y + 0.55F, base.z}, 0.12F, 6, 10,
-                 Color{80, 190, 91, 255});
+void drawBlessing(Cell cell, int boardSize, float time) {
+    const float bob = std::sin(time * 3.0F) * 0.08F;
+    const Vector3 base = worldPosition(cell, boardSize, 0.52F + bob);
+    DrawSphereEx(base, 0.34F, 16, 24, Color{255, 210, 72, 255});
+    DrawSphereEx(base, 0.23F, 12, 18, Color{255, 246, 176, 255});
+    for (int i = 0; i < 3; ++i) {
+        const float angle = time * 2.0F + static_cast<float>(i) * 2.094F;
+        DrawSphereEx({base.x + std::cos(angle) * 0.48F, base.y + 0.06F,
+                      base.z + std::sin(angle) * 0.48F},
+                     0.065F, 6, 8, Color{255, 228, 110, 255});
+    }
+}
+
+void drawCupcake(Cell cell, int boardSize) {
+    const Vector3 p = worldPosition(cell, boardSize, 0.12F);
+    DrawCylinder({p.x, p.y + 0.23F, p.z}, 0.31F, 0.40F, 0.45F, 12,
+                 Color{126, 67, 50, 255});
+    DrawSphereEx({p.x, p.y + 0.58F, p.z}, 0.39F, 12, 18,
+                 Color{196, 77, 133, 255});
+    DrawSphereEx({p.x, p.y + 0.86F, p.z}, 0.20F, 10, 14,
+                 Color{230, 104, 161, 255});
+    DrawSphereEx({p.x, p.y + 1.04F, p.z}, 0.095F, 8, 10,
+                 Color{190, 32, 52, 255});
+    DrawSphereEx({p.x - 0.15F, p.y + 0.64F, p.z - 0.29F}, 0.065F, 6, 8,
+                 Color{34, 14, 27, 255});
+    DrawSphereEx({p.x + 0.15F, p.y + 0.64F, p.z - 0.29F}, 0.065F, 6, 8,
+                 Color{34, 14, 27, 255});
+}
+
+bool occupiedBySnake(const SnakeGame& game, Cell cell) {
+    return std::find(game.snake().begin(), game.snake().end(), cell) != game.snake().end();
+}
+
+Cell randomOpenCell(const SnakeGame& game, const std::vector<Cell>& cupcakes,
+                    std::mt19937& random) {
+    std::uniform_int_distribution<int> coordinate(0, game.boardSize() - 1);
+    for (;;) {
+        const Cell candidate{coordinate(random), coordinate(random)};
+        if (candidate != game.food() && !occupiedBySnake(game, candidate) &&
+            std::find(cupcakes.begin(), cupcakes.end(), candidate) == cupcakes.end())
+            return candidate;
+    }
+}
+
+void refillCupcakes(const SnakeGame& game, std::vector<Cell>& cupcakes,
+                    std::mt19937& random) {
+    while (cupcakes.size() < 3) cupcakes.push_back(randomOpenCell(game, cupcakes, random));
 }
 
 void drawGun(Vector3 head, Direction heading, float muzzleFlash) {
@@ -207,12 +247,18 @@ int main(int argc, char** argv) {
 
     SnakeGame game(18);
     std::vector<Bullet> bullets;
+    std::vector<Cell> cupcakes;
+    std::mt19937 random(std::random_device{}());
+    refillCupcakes(game, cupcakes, random);
+    Screen screen = captureFrame ? Screen::Playing : Screen::Title;
     float fireCooldown = 0.0F;
     float muzzleFlash = 0.0F;
     const Sound fireSound = makeTone(760.0F, 260.0F, 0.09F, 0.24F);
     const Sound hitSound = makeTone(180.0F, 520.0F, 0.14F, 0.32F);
     const Sound eatSound = makeTone(420.0F, 880.0F, 0.18F, 0.28F);
     const Sound crashSound = makeTone(160.0F, 55.0F, 0.38F, 0.38F);
+    const Sound cupcakeSound = makeTone(240.0F, 95.0F, 0.22F, 0.34F);
+    const Sound introSound = makeTone(120.0F, 420.0F, 1.15F, 0.18F);
     Camera3D camera{};
     camera.position = {13.5F, 16.0F, 13.5F};
     camera.target = {0.0F, 0.0F, 0.0F};
@@ -224,17 +270,31 @@ int main(int argc, char** argv) {
     bool done = false;
     while (!WindowShouldClose() && !done) {
         const float delta = GetFrameTime();
-        readMovementInput(game);
-        if (IsKeyPressed(KEY_P)) game.togglePause();
-        if (IsKeyPressed(KEY_R)) {
-            game.reset();
-            bullets.clear();
+        if (screen == Screen::Title && IsKeyPressed(KEY_ENTER)) {
+            screen = Screen::Introduction;
+            PlaySound(introSound);
+        } else if (screen == Screen::Introduction &&
+                   (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE))) {
+            screen = Screen::Playing;
             lastStep = GetTime();
+        }
+
+        if (screen == Screen::Playing) {
+            readMovementInput(game);
+            if (IsKeyPressed(KEY_P)) game.togglePause();
+            if (IsKeyPressed(KEY_R)) {
+                game.reset();
+                bullets.clear();
+                cupcakes.clear();
+                refillCupcakes(game, cupcakes, random);
+                lastStep = GetTime();
+            }
         }
 
         fireCooldown = std::max(0.0F, fireCooldown - delta);
         muzzleFlash = std::max(0.0F, muzzleFlash - delta);
-        if (IsKeyDown(KEY_SPACE) && fireCooldown <= 0.0F && game.state() == GameState::Playing) {
+        if (screen == Screen::Playing && IsKeyDown(KEY_SPACE) &&
+            fireCooldown <= 0.0F && game.state() == GameState::Playing) {
             const Vector3 direction = directionVector(game.direction());
             Vector3 origin = worldPosition(game.snake().front(), game.boardSize(), 0.72F);
             origin.x += direction.x * 0.58F;
@@ -244,7 +304,7 @@ int main(int argc, char** argv) {
             muzzleFlash = 0.075F;
             PlaySound(fireSound);
         }
-        if (game.state() == GameState::Playing) {
+        if (screen == Screen::Playing && game.state() == GameState::Playing) {
             for (Bullet& bullet : bullets) {
                 bullet.position.x += bullet.direction.x * 18.0F * delta;
                 bullet.position.z += bullet.direction.z * 18.0F * delta;
@@ -267,12 +327,26 @@ int main(int argc, char** argv) {
                         PlaySound(hitSound);
                     }
                 }
+
+                for (std::size_t i = 0; i < cupcakes.size() && bullet.life > 0.0F; ++i) {
+                    const Vector3 enemy = worldPosition(cupcakes[i], game.boardSize(), 0.58F);
+                    const float ex = bullet.position.x - enemy.x;
+                    const float ey = bullet.position.y - enemy.y;
+                    const float ez = bullet.position.z - enemy.z;
+                    if (ex * ex + ey * ey + ez * ez < 0.30F) {
+                        cupcakes.erase(cupcakes.begin() + static_cast<std::ptrdiff_t>(i));
+                        game.defeatCupcake();
+                        bullet.life = 0.0F;
+                        PlaySound(cupcakeSound);
+                        refillCupcakes(game, cupcakes, random);
+                    }
+                }
             }
             std::erase_if(bullets, [](const Bullet& bullet) { return bullet.life <= 0.0F; });
         }
 
         const double interval = std::max(0.075, 0.19 - game.score() * 0.0015);
-        if (GetTime() - lastStep >= interval) {
+        if (screen == Screen::Playing && GetTime() - lastStep >= interval) {
             const int previousScore = game.score();
             const GameState previousState = game.state();
             game.step();
@@ -286,22 +360,50 @@ int main(int argc, char** argv) {
         ClearBackground({14, 20, 30, 255});
         BeginMode3D(camera);
         drawBoard(game);
-        drawApple(game.food(), game.boardSize());
+        drawBlessing(game.food(), game.boardSize(), static_cast<float>(GetTime()));
+        for (Cell cupcake : cupcakes) drawCupcake(cupcake, game.boardSize());
         drawBullets(bullets);
         drawSnake(game, muzzleFlash);
         EndMode3D();
 
-        centeredText("ISOMETRIC SNAKE", 24, 36, {123, 231, 196, 255});
-        centeredText("Left/A + Right/D steer   •   Space fires   •   P pauses   •   R restarts",
-                     68, 18, {160, 174, 194, 255});
-        DrawText(TextFormat("SCORE  %04i", game.score()), 42, screenHeight - 64, 28, RAYWHITE);
-        if (game.state() == GameState::Paused) centeredText("PAUSED", 345, 48, RAYWHITE);
-        if (game.state() == GameState::GameOver) {
+        if (screen == Screen::Title) {
+            DrawRectangle(0, 0, screenWidth, screenHeight, Fade(Color{8, 10, 18, 255}, 0.82F));
+            centeredText("BALTHAZAR", 205, 72, Color{255, 210, 72, 255});
+            centeredText("THE BECOMING OF A GOD", 290, 30, Color{196, 77, 133, 255});
+            centeredText("A divine serpent awakens hungry.", 380, 24, RAYWHITE);
+            centeredText("Press ENTER", 475, 24, Color{123, 231, 196, 255});
+        } else if (screen == Screen::Introduction) {
+            DrawRectangle(90, 105, screenWidth - 180, screenHeight - 210,
+                          Fade(Color{8, 10, 18, 255}, 0.93F));
+            centeredText("CHILD OF WADJET", 145, 36, Color{255, 210, 72, 255});
+            centeredText("Balthazar once devoured every Blessing he possessed", 235, 22, RAYWHITE);
+            centeredText("to defeat the Ravenous Cupcake and save the world.", 270, 22, RAYWHITE);
+            centeredText("After millennia of slumber, he has awakened powerless...", 340, 22, RAYWHITE);
+            centeredText("AND EXTREMELY HUNGRY.", 385, 30, Color{229, 75, 92, 255});
+            centeredText("Devour Blessings. Destroy Cupcakes. Ascend.", 460, 24,
+                         Color{123, 231, 196, 255});
+            centeredText("Press ENTER to begin", 535, 20, Color{160, 174, 194, 255});
+        } else {
+            centeredText("BALTHAZAR: THE BECOMING OF A GOD", 24, 32,
+                         Color{255, 210, 72, 255});
+            centeredText("Left/A + Right/D steer   •   Space fires   •   P pauses   •   R restarts",
+                         64, 18, {160, 174, 194, 255});
+            DrawText(TextFormat("DIVINE POWER  %04i", game.score()), 42,
+                     screenHeight - 66, 24, RAYWHITE);
+            const float ascension = std::min(1.0F, static_cast<float>(game.score()) / 200.0F);
+            DrawText("ASCENSION", 745, screenHeight - 67, 18, Color{255, 210, 72, 255});
+            DrawRectangle(865, screenHeight - 65, 190, 18, Color{32, 42, 53, 255});
+            DrawRectangle(865, screenHeight - 65, static_cast<int>(190.0F * ascension), 18,
+                          Color{196, 77, 133, 255});
+        }
+        if (screen == Screen::Playing && game.state() == GameState::Paused)
+            centeredText("PAUSED", 345, 48, RAYWHITE);
+        if (screen == Screen::Playing && game.state() == GameState::GameOver) {
             DrawRectangle(0, 310, screenWidth, 120, Fade(BLACK, 0.72F));
             centeredText("GAME OVER", 325, 48, {255, 102, 108, 255});
             centeredText("Press R to try again", 383, 22, RAYWHITE);
         }
-        if (game.state() == GameState::Won)
+        if (screen == Screen::Playing && game.state() == GameState::Won)
             centeredText("YOU FILLED THE BOARD!", 345, 40, {255, 221, 87, 255});
         if (captureFrame) {
             TakeScreenshot(argv[2]);
@@ -314,6 +416,8 @@ int main(int argc, char** argv) {
     UnloadSound(hitSound);
     UnloadSound(eatSound);
     UnloadSound(crashSound);
+    UnloadSound(cupcakeSound);
+    UnloadSound(introSound);
     CloseAudioDevice();
     CloseWindow();
     return 0;
